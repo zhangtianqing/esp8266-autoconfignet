@@ -31,6 +31,7 @@ PC端部署:
 储存使用信息：
 ------------------------------
 编译后使用了294008 字节储存，详细如下：
+
 IROM   : 263576          - code in flash         (default or ICACHE_FLASH_ATTR) 
 
 IRAM   : 27292   / 32768 - code in IRAM          (ICACHE_RAM_ATTR, ISRs...) 
