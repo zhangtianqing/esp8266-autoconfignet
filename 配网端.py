@@ -32,7 +32,7 @@ def sendPostFormData(ssid):
 def configWifi(iface,ssid):
     profile=pywifi.Profile()
     profile.ssid=ssid   #wifi名称
-    profile.auth=const.AUTH_OPEN    #auth - AP的认证算法
+    profile.auth=const.AUTH_ALG_OPEN    #auth - AP的认证算法
     profile.akm.append(const.AKM_TYPE_WPA2PSK) #选择wifi加密方式
     profile.cipher=const.CIPHER_TYPE_CCMP  #cipher - AP的密码类型
     profile.key=config.get('autoconfig','psd')  #wifi密钥   key （optinoal） - AP的关键。如果无密码，则应该设置此项CIPHER_TYPE_NONE
