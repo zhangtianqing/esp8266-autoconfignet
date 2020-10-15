@@ -1,5 +1,5 @@
-//作者 天清 - QQ2455160536 - 2020年9月22日  --  版本号 0.1
-//介绍:本源码旨在快速实现esp8266配网服务（参考硬件 Wemos d1 mini），并配套有配网端（以后发，还没写好，目前可以使用网络配网）
+//作者 天清 - QQ2455160536 - 2020年9月22日  --  版本号 0.2
+//介绍:本源码旨在快速实现esp8266配网服务（参考硬件 Wemos d1 mini）
 //部署:将你的代码写在todo方法（等价于loop）内即可
 //手动配网过程：供电->打开手机搜索名为AutoConfig-XXXXXX的WIFI，密码为AutoConfig,然后网页访问网关地址，填好数据后提交即可；
 //自动配网过程：供电->笔记本打开WIFI，然后运行程序即可自行配网，WIFI的名字和密码在目录下的config.ini文件中修改
@@ -12,9 +12,8 @@
 
 #define AP_name "AutoConfig-"
 #define AP_PassWord "AutoConfig"
-#define Begin(baud) Serial.begin(baud)
-#define Print(message) Print(message)
-#define Println(message) Println(message)
+#define Print(message) Serial.print(message)
+#define Println(message) Serial.println(message)
 
 
 
@@ -95,10 +94,10 @@ void handleForm() {
     for (uint8_t i = 0; i < server.args(); i++) {
       message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
       if(server.argName(i)=="ssid"){
-        config.ssid=server.arg(i).c_str();
+        strcpy(config.ssid,server.arg(i).c_str());
       }
       if(server.argName(i)=="password"){
-        config.pwd=server.arg(i).c_str();
+        strcpy(config.psw,server.arg(i).c_str());
       }
     }
     Println(message);
@@ -178,11 +177,11 @@ void setupWebServer(){
 
 bool setupWifiConnection(){
   ReadConfigWifi();
-  WiFi.begin(String(config.ssid), String(config.pwd));
+  WiFi.begin(String(config.ssid), String(config.psw));
   Print("\nWIFI--账号：");
   Print(config.ssid);
   Print(",密码：");
-  Print(config.pwd);
+  Print(config.psw);
   Println(",Wifi 连接中");
 
   int count=0;
@@ -198,7 +197,7 @@ bool setupWifiConnection(){
   
   Println("");
   Print("Connected to ");
-  Println(ssid);
+  Println(config.ssid);
   Print("IP address: ");
   Println(WiFi.localIP());
   return true;
