@@ -56,20 +56,17 @@ def start():
     target_psw=config.get('wifi','psw')
 
     iface=pywifi.PyWifi().interfaces()[0]
-    time.sleep(2)
-    n=0
-    while True:
-        result = iface.scan_results()
-        print("扫描结果:"+result+"\n")
-        for i in range(len(result)):
-            print(result[i].ssid, result[i].bssid)
-            if result[i].ssid.startswith("AutoConfig-") :
-                #配网操作
-                print("开始对"+result[i].ssid+"进行配网"+"\n")
-                configWifi(iface,result[i].ssid)
-        if n>10:
-            break
-        n+=1
+    result = iface.scan_results()
+    print("扫描结果:"+result+"\n")
+    for i in range(len(result)):
+        print(result[i].ssid, result[i].bssid)
+        if result[i].ssid.startswith("AutoConfig-") :
+            #配网操作
+            print("符合条件！开始配网")
+            
+            configWifi(iface,result[i].ssid)
+        else:
+            print("不符合条件！跳过")
     print("配网完成！")
 
 if __name__ == "__main__":
