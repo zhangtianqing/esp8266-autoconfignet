@@ -55,7 +55,7 @@ def start():
     target_ssid=config.get('wifi','ssid')
     target_psw=config.get('wifi','psw')
 
-    iface=pywifi.PyWifi().interfaces[0]
+    iface=pywifi.PyWifi().interfaces()[0]
     time.sleep(2)
     n=0
     while True:
