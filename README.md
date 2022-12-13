@@ -1,43 +1,39 @@
 # esp8266-autoconfignet
 基于esp8266的wemos d1 r2 mini 版的无线网络配置方案
 
-作者 天清 - QQ2455160536 - 2020年10月15日  --  版本号 0.2
+作者 天清 - QQ2455160536 - 2022年12月13日  --  版本号 1.0
 
 介绍:本源码旨在快速实现esp8266配网服务，PC端部署旨在为自动配网使用。
 
 
-ESP8266部署:
+ESP8266开发:
 ------------------------------
-将你的代码写在todo方法（等价于loop）内烧录即可
+编码:将setup的方法写到beforeSetup,将loop的代码写在todo方法（等价于loop）内即可
 
 
 
-PC端部署:
+
+
+
+配网模式说明：
 ------------------------------
-安装python3.6，安装所需组件"pip install configparser pywifi netifaces requests"
+基于Esp的SmartConfig编码，直接使用app即可配网：https://objects.githubusercontent.com/github-production-release-asset-2e65be/34372655/a9d1553f-9643-497f-9833-09b2d0d24c0c?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20221208%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20221208T044444Z&X-Amz-Expires=300&X-Amz-Signature=a3d98237a79412a6110a814501c4c4fb4a12e5a8d5f70fc78c3c782465781f86&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=34372655&response-content-disposition=attachment%3B%20filename%3Desptouch-v2.3.2.apk&response-content-type=application%2Fvnd.android.package-archive
 
 
-
-配网模式选择：
+编译输出信息：
 ------------------------------
-如果是少量可直接手动配网：
+使用了344857 字节储存，最多1044464字节
+全局变量使用了38268字节，剩余43652字节可供本地变量使用，最多内存数量为81920字节（80K）
+详细如下：
 
-手动配网过程：供电->打开手机搜索名为AutoConfig-XXXXXX的WIFI，密码为AutoConfig,然后网页访问网关地址，填好数据后提交即可；
+ICACHE : 32768           - flash instruction cache 
 
-如果数量较多即可使用PC端进行自动配网
+IROM   : 313792          - code in flash         (default or ICACHE_FLASH_ATTR) 
 
-自动配网过程：供电->笔记本打开WIFI，然后运行程序即可自行配网，WIFI的名字和密码在目录下的config.ini文件中修改
+IRAM   : 27901   / 32768 - code in IRAM          (IRAM_ATTR, ISRs...) 
 
-储存使用信息：
-------------------------------
-编译后使用了294008 字节储存，全局变量使用了28692字节，详细如下：
+DATA   : 1568  )         - initialized variables (global, static) in RAM/HEAP 
 
-IROM   : 263576          - code in flash         (default or ICACHE_FLASH_ATTR) 
+RODATA : 1596  ) / 81920 - constants             (global, static) in RAM/HEAP 
 
-IRAM   : 27292   / 32768 - code in IRAM          (ICACHE_RAM_ATTR, ISRs...) 
-
-DATA   : 1252  )         - initialized variables (global, static) in RAM/HEAP 
-
-RODATA : 1888  ) / 81920 - constants             (global, static) in RAM/HEAP 
-
-BSS    : 25552 )         - zeroed variables      (global, static) in RAM/HEAP 
+BSS    : 35104 )         - zeroed variables      (global, static) in RAM/HEAP 
