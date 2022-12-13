@@ -1,260 +1,242 @@
 //作者 天清 - QQ2455160536 - 2020年9月22日  --  版本号 0.2
-//介绍:本源码旨在快速实现esp8266配网服务（参考硬件 Wemos d1 mini）
-//部署:将你的代码写在todo方法（等价于loop）内即可
-//手动配网过程：供电->打开手机搜索名为AutoConfig-XXXXXX的WIFI，密码为AutoConfig,然后网页访问网关地址，填好数据后提交即可；
-//自动配网过程：供电->笔记本打开WIFI，然后运行程序即可自行配网，WIFI的名字和密码在目录下的config.ini文件中修改
+//基于Wemos D1 R2 Mini（ESP8266）的基础外围代码  
+
+//编码:将setup的方法写到beforeSetup,将loop的代码写在todo方法（等价于loop）内即可
+
+//功能1:SmartConfig(App:https://objects.githubusercontent.com/github-production-release-asset-2e65be/34372655/a9d1553f-9643-497f-9833-09b2d0d24c0c?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAIWNJYAX4CSVEH53A%2F20221208%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20221208T044444Z&X-Amz-Expires=300&X-Amz-Signature=a3d98237a79412a6110a814501c4c4fb4a12e5a8d5f70fc78c3c782465781f86&X-Amz-SignedHeaders=host&actor_id=0&key_id=0&repo_id=34372655&response-content-disposition=attachment%3B%20filename%3Desptouch-v2.3.2.apk&response-content-type=application%2Fvnd.android.package-archive)
+//功能2:无线OTA
+//功能3:自动上线机制
+
+//第一次使用时，强制使用SmartConfig配网
+//之后使用会自动调用储存了的WiFi配置自动联网
+//如果需要强制刷新配置信息，需要将 forceReSmartConfigPin 引脚接地
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
 #include <EEPROM.h>
+
+#include <ArduinoOTA.h>
 #include <ArduinoUniqueID.h>
 
-#define AP_name "AutoConfig-"
-#define AP_PassWord "AutoConfig"
-#define Print(message) Serial.print(message)
-#define Println(message) Serial.println(message)
+//自动上线设置--------------------------------------------------------
+WiFiUDP Udp;
+
+unsigned int localPort = 8888;//本地通讯端口
+IPAddress remoteEndPoint;//服务端地址
+unsigned int remotePort = 9981;//服务器端ip
+char packetBuffer[UDP_TX_PACKET_MAX_SIZE + 1];//最大接收消息缓冲区
+char ReplyBuffer[] = "recv";//已收到上线广播回复信息
+char token[] = "1as3d4a5d1a";//上线密钥
+bool serverBind = false;//服务上线标识
 
 
-
-
-struct config_wifi
-{
-  char ssid[32];
-  char psw[64];
+//无线网络初始化账号密码----------------------------------------------
+struct WifiConfig { //Wifi配置结构体
+  char stassid[32];  //定义配网得到的WIFI名长度(最大32字节)
+  char stapsw[64];   //定义配网得到的WIFI密码长度(最大64字节)
 };
+WifiConfig config;//Wifi配置结构体对象
+int forceReSmartConfigPin = D0;//接地会强制进入配网模式 的引脚
+String ssid;
+String psw;
 
-config_wifi config;
+//业务逻辑开始>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
-ESP8266WebServer server(80);
+//等效Setup方法
+void beforeSetup(){
+  Serial.println("setup");
+}
+//等效Loop方法
+void todo(){
+  Serial.println("loop");
+}
+//业务逻辑结束<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+void toggleLED();
+void initNetwork();
 
-const int led = LED_BUILTIN;
+void setup() {
+  Serial.begin(115200);
+  pinMode(LED_BUILTIN, OUTPUT);
 
-const String postForms = "<html>\
-  <head>\
-    <title>ESP8266 Web Server POST handling</title>\
-    <style>\
-      body { background-color: #cccccc; font-family: Arial, Helvetica, Sans-Serif; Color: #000088; }\
-    </style>\
-  </head>\
-  <body>\
-    <h1>POST form data to /postform/</h1><br>\
-    <form method=\"post\" enctype=\"application/x-www-form-urlencoded\" action=\"/postform/\">\
-      wifiName:\
-      <input type=\"text\" name=\"ssid\" value=\"TP_LINK-2345\"><br>\
-      wifiPassword:\
-      <input type=\"text\" name=\"password\" value=\"123456789\"><br>\
-      <input type=\"submit\" value=\"Submit\">\
-    </form>\
-  </body>\
-</html>";
-
-String getArduinoUniqueId(){
-  /*获得arduino板子硬件唯一ID*/  
-  String uniqid = "";
-  for (size_t i = 0; i < UniqueIDsize; i++)
-  {
-    if( i > 0 and i < UniqueIDsize){
-      uniqid = uniqid + "-";
-    }
-    if (UniqueID[i] < 0x10){
-      uniqid = uniqid + "0";
-    }
-    uniqid = uniqid + String(UniqueID[i], HEX);
-  }
-  return uniqid;
+  UniqueID8dump(Serial);
+  digitalWrite(LED_BUILTIN, LOW);
+  initNetwork();
+  initOTA();
+  initOnline();
+  digitalWrite(LED_BUILTIN, HIGH);
+  beforeSetup();
 }
 
-void handleRoot() {
-  digitalWrite(led, 1);
-  server.send(200, "text/html", postForms);
-  digitalWrite(led, 0);
+void loop() {
+  checkOnline();
+  checkOTA();
+  todo();
 }
 
-void handlePlain() {
-  if (server.method() != HTTP_POST) {
-    digitalWrite(led, 1);
-    server.send(405, "text/plain", "Method Not Allowed");
-    digitalWrite(led, 0);
-  } else {
-    digitalWrite(led, 1);
-    server.send(200, "text/plain", "POST body was:\n" + server.arg("plain"));
-    digitalWrite(led, 0);
-  }
-}
 
-void handleForm() {
-  if (server.method() != HTTP_POST) {
-    digitalWrite(led, 1);
-    server.send(405, "text/plain", "Method Not Allowed");
-    digitalWrite(led, 0);
-  } else {
-    digitalWrite(led, 1);
-    String message = "POST form was:\n";
-    for (uint8_t i = 0; i < server.args(); i++) {
-      message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-      if(server.argName(i)=="ssid"){
-        strcpy(config.ssid,server.arg(i).c_str());
-      }
-      if(server.argName(i)=="password"){
-        strcpy(config.psw,server.arg(i).c_str());
+void toggleLED() {
+  static int pinStatus = LOW;
+  if (pinStatus == HIGH)
+    pinStatus = LOW;
+  else
+    pinStatus = HIGH;
+  digitalWrite(LED_BUILTIN, pinStatus);
+}
+void initNetwork() {
+  pinMode(forceReSmartConfigPin, INPUT_PULLUP);
+  WiFi.mode(WIFI_STA);
+  loadConfig();
+  if (ssid != 0 && psw != 0) {
+    WiFi.begin(ssid, psw);  //如果有密码则自动连接
+    while (WiFi.status() != WL_CONNECTED) {
+      if (digitalRead(0) == LOW) {
+        smartConfig();  //如果配网按钮被按下则停止当前连接开始配网
+        break;          //跳出所有循环进入主程序
+      } else {
+        digitalWrite(LED_BUILTIN, LOW);  //加个LED慢闪，确认联网是否成功！成功就不闪了。
+        delay(1000);
+        digitalWrite(LED_BUILTIN, HIGH);  
+        delay(1000);
       }
     }
-    Println(message);
-    SaveConfigWifi();
-    server.send(200, "text/plain", "success Work:"+message);
-    digitalWrite(led, 0);
-    delay(1000);
-    ESP.restart();
+  } else {
+    smartConfig();
   }
+  //ipL
+  Serial.println(WiFi.localIP());
+}
+void smartConfig() {
+  Serial.println();
+  Serial.print("AutoConnect:");
+  Serial.println(WiFi.getAutoConnect());
+  Serial.println("ConnectWifiTimeout,use smartconfig");
+  WiFi.begin();
+
+  WiFi.beginSmartConfig();
+  while (true) {
+    delay(500);
+    Serial.print(".");
+    if (WiFi.smartConfigDone()) {
+      strcpy(config.stassid, WiFi.SSID().c_str());  //名称复制
+      strcpy(config.stapsw, WiFi.psk().c_str());    //密码复制
+      saveConfig();                                 //调用保存函数
+      WiFi.setAutoConnect(true);                    // 设置自动连接
+      Serial.println("\nSmartConfig succ");
+      break;
+    }
+    toggleLED();
+  }
+
+
+  // 等待获取网络ip配置成功
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(50);
+  }
+  Serial.println();
+  //设置Debug信息输出到串口
+  WiFi.printDiag(Serial);
+  // //wifi名称
+  // Serial.println(WiFi.SSID());
+  // //WIFI密码
+  // Serial.println(WiFi.psk());
 }
 
-void handleNotFound() {
-  digitalWrite(led, 1);
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i = 0; i < server.args(); i++) {
-    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
-  }
-  server.send(404, "text/plain", message);
-  digitalWrite(led, 0);
+void SerialNum() {
+  // byte ids[8];
+  UniqueID8dump(Serial);
 }
 
+void initOnline() {
+  Udp.begin(localPort);
+}
 
-void SaveConfigWifi(){
-//  strcpy(config.ssid, WiFi.SSID().c_str());
-//  strcpy(config.psw, WiFi.psk().c_str());
+void checkOnline() {
+  // if(serverBind) return;
+  int packetSize = Udp.parsePacket();
+  if (packetSize) {
+    Serial.printf("Received packet of size %d from %s:%d\n    (to %s:%d, free heap = %d B)\n",
+                  packetSize,
+                  Udp.remoteIP().toString().c_str(), Udp.remotePort(),
+                  Udp.destinationIP().toString().c_str(), Udp.localPort(),
+                  ESP.getFreeHeap());
+
+    // read the packet into packetBufffer
+    int n = Udp.read(packetBuffer, UDP_TX_PACKET_MAX_SIZE);
+    packetBuffer[n] = 0;
+    Serial.println("Contents:");
+    Serial.println(packetBuffer);
+    bool onl = strcmp(token, packetBuffer) == 0;
+    if (onl) {
+      Serial.println("verity succ,online");
+      remoteEndPoint = Udp.remoteIP();
+      Udp.beginPacket(Udp.remoteIP(), remotePort);
+      Udp.write(_UniqueID.id, 8);
+      Udp.endPacket();
+    }
+    serverBind = onl;
+    // send a reply, to the IP address and port that sent us the packet we received
+    Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+    Udp.write(ReplyBuffer);
+    Udp.endPacket();
+  }
+}
+void checkOTA() {
+  ArduinoOTA.handle();
+}
+void initOTA() {
+
+  ArduinoOTA.setPassword(token);
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else {  // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+}
+void saveConfig()  //保存函数
+{
+  EEPROM.begin(1024);  //向系统申请1024kb ROM
+  //开始写入
+  uint8_t *p = (uint8_t *)(&config);
+  for (int i = 0; i < sizeof(config); i++) {
+    EEPROM.write(i, *(p + i));  //在闪存内模拟写入
+  }
+  EEPROM.commit();  //执行写入ROM
+}
+
+void loadConfig()  //读取函数
+{
   EEPROM.begin(1024);
-  uint8_t *p = (uint8_t*)(&config);
-  for (int i = 0; i < sizeof(config); i++)
-  {
-    EEPROM.write(i, *(p + i));
-  }
-  EEPROM.commit();
-}
-
-void ReadConfigWifi(){
-  EEPROM.begin(1024);
-  uint8_t *p = (uint8_t*)(&config);
-  for (int i = 0; i < sizeof(config); i++)
-  {
+  uint8_t *p = (uint8_t *)(&config);
+  for (int i = 0; i < sizeof(config); i++) {
     *(p + i) = EEPROM.read(i);
   }
   EEPROM.commit();
-}
-
-String charToString(char *c){
-  String item="";
-  for(int k=0; k<sizeof(&c); k++){
-      item += String(c[k]);
-  }
-  return item;
-}
-
-
-void setupWebServer(){
-//  if (MDNS.begin("esp8266")) {
-//    Println("MDNS responder started");
-//  }
-
-  server.on("/", handleRoot);
-
-  server.on("/postplain/", handlePlain);
-
-  server.on("/postform/", handleForm);
-
-  server.onNotFound(handleNotFound);
-
-  server.begin();
-  Println("HTTP Config Server Started");
-}
-
-bool setupWifiConnection(){
-  ReadConfigWifi();
-  WiFi.begin(String(config.ssid), String(config.psw));
-  Print("\nWIFI--账号：");
-  Print(config.ssid);
-  Print(",密码：");
-  Print(config.psw);
-  Println(",Wifi 连接中");
-
-  int count=0;
-  do{// Wait for connection
-    delay(500);
-    Print(".");
-    if(count>20){//timeout
-      Println("Wifi Connection faild");
-      return false;
-    }
-    count++;
-  }while(WiFi.status() != WL_CONNECTED);
-  
-  Println("");
-  Print("Connected to ");
-  Println(config.ssid);
-  Print("IP address: ");
-  Println(WiFi.localIP());
-  return true;
-}
-void setupAPModel(){
-      Print("设置AP......");
-    //配置IP信息
-    WiFi.mode(WIFI_AP);
-    //启动AP模式
-    Println("启动AP...");
-    boolean result = WiFi.softAP(AP_name+getArduinoUniqueId(),AP_PassWord);
-    if(result)
-    {
-        Print("开始\nIP短地址：");
-        //输出短地址
-        Print(WiFi.softAPIP()+"-");
-        //输出MAC地址
-        Println(String("MAC地址：")+WiFi.softAPmacAddress().c_str()); 
-    }
-    else
-    {
-        Println("启动失败！");
-    }
-    //设置完毕
-    Println("设置结束");
-}
-
-void todo(){
-  Println("todo");
-  delay(1000);
-}
-bool isWork=false;
-void setup(void) {
-  //default
-  pinMode(led, OUTPUT);
-  digitalWrite(led, 0);
-  Serial.begin(115200);
-  Println(""); 
-
-  //connectionToWifi
-  if(!setupWifiConnection()==true){//startAPConfig
-    isWork=false;
-    Println("连接WIFI失败，开始进入配网模式");
-    setupAPModel();
-    setupWebServer();
-  }else{
-    Println("连接WIFI成功，开始进入工作模式");
-    isWork=true;
-  }
-  
-}
-
-void loop(void) {
-  if(isWork!=true){
-    server.handleClient();
-    Println(String("已连接的个数：")+WiFi.softAPgetStationNum());
-    return;
-  }
-  todo();
+  ssid = config.stassid;
+  psw = config.stapsw;
 }
