@@ -9,6 +9,7 @@
 ESP8266开发:
 ------------------------------
 1.编码:将setup的方法写到beforeSetup,将loop的代码写在todo方法（等价于loop）内即可
+
 2.ide中需要将EraseFlash改为Sketch+WiFi Settings
 
 
